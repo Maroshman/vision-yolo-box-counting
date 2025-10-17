@@ -1,0 +1,34 @@
+# Docker Compose for YOLO Box Counting Engine
+version: '3.8'
+
+services:
+  yolo-box-counting:
+    build: .
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./results:/app/results
+    environment:
+      - ROBOFLOW_API_KEY=${ROBOFLOW_API_KEY}
+      - ROBOFLOW_WORKSPACE=${ROBOFLOW_WORKSPACE}
+      - ROBOFLOW_PROJECT=${ROBOFLOW_PROJECT}
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    
+  # Optional: Add a database for storing results
+  # postgres:
+  #   image: postgres:13
+  #   environment:
+  #     POSTGRES_DB: box_counting
+  #     POSTGRES_USER: user
+  #     POSTGRES_PASSWORD: password
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+
+# volumes:
+#   postgres_data:

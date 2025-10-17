@@ -1,0 +1,36 @@
+# Model configuration
+model:
+  name: "yolov8n"  # yolov8n, yolov8s, yolov8m, yolov8l, yolov8x
+  input_size: 640
+  confidence: 0.5
+  iou_threshold: 0.45
+
+# Training configuration
+training:
+  epochs: 100
+  batch_size: 16
+  learning_rate: 0.01
+  patience: 50
+  save_period: 10
+
+# Roboflow configuration
+roboflow:
+  workspace: ""
+  project: "box-detection"
+  version: 1
+  format: "yolov8"
+
+# Detection configuration
+detection:
+  max_detections: 1000
+  save_crops: true
+  save_txt: true
+  save_conf: true
+
+# Application configuration
+app:
+  title: "YOLO Box Counting Engine"
+  max_file_size: 200  # MB
+  allowed_extensions: [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]
+  output_dir: "results"
+  detection_backend: "roboflow"  # options: roboflow, local
