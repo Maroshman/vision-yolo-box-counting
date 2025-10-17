@@ -210,10 +210,22 @@ def main():
                 with col2:
                     st.subheader("Detection Results")
                     
-                    # Metrics
+                    # Display class counts if available
+                    class_counts = results.get('class_counts', {})
+                    if class_counts:
+                        st.markdown("### 📊 Detections by Class")
+                        for cls, count in class_counts.items():
+                            icon = "📦" if cls.lower() == "box" else "🏷️" if cls.lower() == "label" else "🔷"
+                            st.markdown(f"""
+                            <div class="metric-card">
+                                <h3>{icon} {cls.capitalize()}s: {count}</h3>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    
+                    # Total count metric
                     st.markdown(f"""
                     <div class="metric-card">
-                        <h3>📦 Boxes Detected: {results['count']}</h3>
+                        <h3>🎯 Total Detections: {results['count']}</h3>
                     </div>
                     """, unsafe_allow_html=True)
                     

@@ -100,6 +100,7 @@ class RoboflowAPIDetector:
 
             boxes: List[List[int]] = []
             confidences: List[float] = []
+            classes: List[str] = []
             crops: List[np.ndarray] = []
 
             preds = data.get("predictions", [])
@@ -114,6 +115,7 @@ class RoboflowAPIDetector:
                 w = float(p.get("width", 0.0))
                 h = float(p.get("height", 0.0))
                 conf = float(p.get("confidence", 0.0))
+                class_name = str(p.get("class", "box"))
 
                 x1 = int(round(x_c - w / 2))
                 y1 = int(round(y_c - h / 2))
@@ -131,14 +133,22 @@ class RoboflowAPIDetector:
 
                 boxes.append([x1, y1, x2, y2])
                 confidences.append(conf)
+                classes.append(class_name)
 
                 if return_crops:
                     crop = image[y1:y2, x1:x2]
                     crops.append(crop)
 
+            # Count by class
+            class_counts = {}
+            for cls in classes:
+                class_counts[cls] = class_counts.get(cls, 0) + 1
+
             return {
                 "boxes": boxes,
                 "confidences": confidences,
+                "classes": classes,
+                "class_counts": class_counts,
                 "count": len(boxes),
                 "crops": crops if return_crops else None,
                 "image_shape": (img_h, img_w, image.shape[2] if image.ndim == 3 else 1),
@@ -157,19 +167,49 @@ class RoboflowAPIDetector:
             raise
 
     def visualize_detections(self, image: np.ndarray, detection_results: Dict) -> np.ndarray:
-        """Draw bounding boxes on the image similar to BoxDetector.visualize_detections."""
+        """Draw bounding boxes on the image with class labels and colors."""
         vis_image = image.copy()
         boxes = detection_results.get("boxes", [])
         confidences = detection_results.get("confidences", [])
+        classes = detection_results.get("classes", [])
+        
+        # Color map for different classes
+        class_colors = {
+            "box": (255, 200, 0),      # Yellow for boxes
+            "label": (200, 0, 255),     # Purple for labels
+        }
+        default_color = (0, 200, 255)  # Orange for unknown classes
 
-        for i, (box, conf) in enumerate(zip(boxes, confidences)):
+        for i, (box, conf, cls) in enumerate(zip(boxes, confidences, classes if classes else [''] * len(boxes))):
             x1, y1, x2, y2 = box
-            cv2.rectangle(vis_image, (x1, y1), (x2, y2), (0, 200, 255), 2)
-            label = f"Box {i+1}: {conf:.2f}"
+            
+            # Get color for this class
+            color = class_colors.get(cls.lower(), default_color)
+            
+            # Draw bounding box
+            cv2.rectangle(vis_image, (x1, y1), (x2, y2), color, 2)
+            
+            # Create label with class name and confidence
+            label = f"{cls.capitalize()} {conf:.0%}" if cls else f"Box {i+1}: {conf:.2f}"
             label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
-            cv2.rectangle(vis_image, (x1, y1 - label_size[1] - 10), (x1 + label_size[0], y1), (0, 200, 255), -1)
+            
+            # Draw label background
+            cv2.rectangle(vis_image, (x1, y1 - label_size[1] - 10), (x1 + label_size[0], y1), color, -1)
+            
+            # Draw label text
             cv2.putText(vis_image, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
 
-        count_text = f"Total Boxes: {len(boxes)}"
-        cv2.putText(vis_image, count_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 200, 255), 2)
+        # Display class counts
+        class_counts = detection_results.get("class_counts", {})
+        y_offset = 30
+        for cls, count in class_counts.items():
+            color = class_colors.get(cls.lower(), default_color)
+            count_text = f"{cls.capitalize()}s: {count}"
+            cv2.putText(vis_image, count_text, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+            y_offset += 40
+        
+        # Total count
+        total_text = f"Total: {len(boxes)}"
+        cv2.putText(vis_image, total_text, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        
         return vis_image
