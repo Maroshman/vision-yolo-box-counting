@@ -1,6 +1,6 @@
 # Makefile for YOLO Box Counting Engine
 
-.PHONY: help install setup clean test run-app run-examples train deploy docker-build docker-run
+.PHONY: help install setup clean test run-app run-api run-api-dev run-examples train deploy docker-build docker-run
 
 # Default target
 help:
@@ -13,6 +13,8 @@ help:
 	@echo ""
 	@echo "Running Applications:"
 	@echo "  run-app      - Start Streamlit web application"
+	@echo "  run-api      - Start FastAPI server (port 8000)"
+	@echo "  run-api-dev  - Start FastAPI server in development mode"
 	@echo "  run-examples - Run example scripts"
 	@echo "  run-cli      - Show CLI usage examples"
 	@echo ""
@@ -27,9 +29,10 @@ help:
 	@echo "  lint         - Run code linting"
 	@echo ""
 	@echo "Deployment:"
-	@echo "  deploy       - Prepare deployment package"
-	@echo "  docker-build - Build Docker image"
-	@echo "  docker-run   - Run Docker container"
+	@echo "  deploy-cloud     - Deploy to Google Cloud Run"
+	@echo "  test-deployment  - Test deployed API (URL=https://...)"
+	@echo "  docker-build-api - Build Docker image for API"
+	@echo "  docker-run-api   - Run API in Docker container"
 
 # Installation and Setup
 install:
@@ -56,6 +59,14 @@ clean:
 run-app:
 	@echo "🚀 Starting Streamlit web application..."
 	streamlit run app.py
+
+run-api:
+	@echo "🚀 Starting FastAPI server (production)..."
+	python run_api.py
+
+run-api-dev:
+	@echo "🚀 Starting FastAPI server (development with hot reload)..."
+	python run_api_dev.py
 
 run-examples:
 	@echo "📚 Running example scripts..."
@@ -134,18 +145,25 @@ lint:
 	fi
 
 # Deployment
-deploy:
-	@echo "📦 Preparing deployment package..."
-	mkdir -p deploy
-	cp -r src models config.yaml requirements.txt deploy/
-	cp app.py cli.py deploy/
-	@if [ -f "runs/detect/train/weights/best.pt" ]; then \
-		cp runs/detect/train/weights/best.pt deploy/models/; \
-		echo "✅ Trained model included in deployment package"; \
+deploy-cloud:
+	@echo "� Deploying to Google Cloud Run..."
+	./deploy.sh
+
+test-deployment:
+	@echo "🧪 Testing deployed API..."
+	@if [ -z "$(URL)" ]; then \
+		echo "❌ Please provide URL: make test-deployment URL=https://your-service-url.run.app"; \
+	else \
+		python test_deployment.py $(URL); \
 	fi
-	cd deploy && zip -r ../yolo-box-counting-$(shell date +%Y%m%d).zip .
-	rm -rf deploy
-	@echo "✅ Deployment package created!"
+
+docker-build-api:
+	@echo "🐳 Building API Docker image..."
+	docker build -f Dockerfile.api -t yolo-box-counting-api:latest .
+
+docker-run-api:
+	@echo "🐳 Running API Docker container..."
+	docker run -p 8080:8080 --env-file .env.cloud yolo-box-counting-api:latest
 
 docker-build:
 	@echo "🐳 Building Docker image..."

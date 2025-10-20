@@ -1,0 +1,61 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: yolo-box-counting-api
+  annotations:
+    run.googleapis.com/ingress: all
+    run.googleapis.com/execution-environment: gen2
+spec:
+  template:
+    metadata:
+      annotations:
+        # Set CPU and memory limits
+        run.googleapis.com/cpu: "2"
+        run.googleapis.com/memory: "4Gi"
+        run.googleapis.com/max-instances: "10"
+        run.googleapis.com/min-instances: "0"
+        # Set timeout for long-running requests
+        run.googleapis.com/timeout: "300"
+    spec:
+      containerConcurrency: 10
+      timeoutSeconds: 300
+      containers:
+      - image: gcr.io/rm-ai-api/yolo-box-counting-api:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: PORT
+          value: "8080"
+        - name: HOST
+          value: "0.0.0.0"
+        - name: DETECTION_BACKEND
+          value: "roboflow"
+        - name: ENABLE_OCR
+          value: "true"
+        # Add your environment variables here
+        - name: ROBOFLOW_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: api-secrets
+              key: roboflow-api-key
+        - name: ROBOFLOW_API_ENDPOINT
+          value: "https://detect.roboflow.com/shoeboxes-rwv5h/2"
+        resources:
+          limits:
+            cpu: "2000m"
+            memory: "4Gi"
+          requests:
+            cpu: "1000m"
+            memory: "2Gi"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10

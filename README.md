@@ -81,7 +81,9 @@ Yolo-boxCounting/
 ├── 📱 app.py                    # Streamlit web application
 ├── 💻 cli.py                    # Command-line interface
 ├── 📚 examples.py               # Usage examples
-├── 🐳 Dockerfile               # Docker configuration
+├── � run_api.py                # FastAPI server runner (production)
+├── 🔧 run_api_dev.py            # FastAPI server runner (development)
+├── �🐳 Dockerfile               # Docker configuration
 ├── 📝 Makefile                 # Build automation
 ├── 📊 config.yaml              # Configuration settings
 ├── 📦 requirements.txt         # Python dependencies
@@ -89,6 +91,10 @@ Yolo-boxCounting/
 ├── 📂 src/                     # Core source code
 │   ├── 🎯 box_detector.py      # YOLO detection engine
 │   ├── 🌐 roboflow_client.py   # Roboflow integration
+│   ├── 🚀 api_server.py        # FastAPI server implementation
+│   ├── 📊 label_processor.py   # Barcode/QR/OCR processing
+│   ├── 📐 geometry_utils.py    # Geometric calculations
+│   ├── 📋 api_logger.py        # API usage logging
 │   └── 🛠️ utils.py             # Utility functions
 ├── 
 ├── 📂 notebooks/               # Jupyter training notebooks
@@ -105,16 +111,23 @@ Yolo-boxCounting/
 
 ## 🎮 Usage Guide
 
-### � REST API (Recommended for Production)
+### 🌐 REST API (Recommended for Production)
 
 Start the FastAPI server:
 
 ```bash
-# Using uvicorn directly
-python api.py
+# Production mode
+python run_api.py
 
-# Or with hot reload for development
-uvicorn api:app --reload --host 0.0.0.0 --port 8000
+# Development mode with hot reload
+python run_api_dev.py
+
+# Using Make commands
+make run-api      # Production
+make run-api-dev  # Development
+
+# Direct uvicorn (alternative)
+uvicorn src.api_server:app --host 0.0.0.0 --port 8000
 ```
 
 The API will be available at `http://localhost:8000` with automatic documentation at `http://localhost:8000/docs`.
@@ -122,10 +135,11 @@ The API will be available at `http://localhost:8000` with automatic documentatio
 **Example API Request:**
 
 ```bash
-# Detect boxes and process labels
+# Detect boxes and process labels with annotated image
 curl -X POST "http://localhost:8000/detect" \
   -F "file=@image.jpg" \
   -F "process_labels=true" \
+  -F "include_annotated_image=true" \
   -F "ocr_confidence=0.5"
 ```
 

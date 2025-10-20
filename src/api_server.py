@@ -9,19 +9,21 @@ import os
 import io
 import cv2
 import base64
+import secrets
 import numpy as np
 from typing import List, Optional, Dict, Any
-from fastapi import FastAPI, File, UploadFile, HTTPException, Query
+from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Depends, status
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 import logging
 
-from src.rf_api_detector import RoboflowAPIDetector
-from src.box_detector import BoxDetector
-from src.label_processor import LabelProcessor
-from src.geometry_utils import match_labels_to_boxes
-from src.api_logger import APILogger
+from .rf_api_detector import RoboflowAPIDetector
+from .box_detector import BoxDetector
+from .label_processor import LabelProcessor
+from .geometry_utils import match_labels_to_boxes
+from .api_logger import APILogger
 
 # Load environment variables
 load_dotenv()
@@ -36,6 +38,27 @@ app = FastAPI(
     description="Detect boxes, read labels with barcodes/QR codes/text",
     version="2.0.0"
 )
+
+# Basic Authentication Setup
+security = HTTPBasic()
+
+# Get authentication credentials from environment variables
+API_USERNAME = os.getenv("API_USERNAME", "admin")
+API_PASSWORD = os.getenv("API_PASSWORD", "secure123")
+
+def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
+    """
+    Verify basic authentication credentials.
+    """
+    correct_username = secrets.compare_digest(credentials.username, API_USERNAME)
+    correct_password = secrets.compare_digest(credentials.password, API_PASSWORD)
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
 
 # Global instances (initialized on startup)
 detector = None
@@ -293,14 +316,16 @@ def create_annotated_image(
 
 
 @app.get("/")
-async def root():
-    """API root endpoint."""
+async def root(username: str = Depends(authenticate)):
+    """API root endpoint. Requires authentication."""
     return {
         "name": "YOLO Box Counting & Label Processing API",
         "version": "2.0.0",
+        "authenticated_user": username,
         "endpoints": {
             "detect": "/detect (POST)",
             "health": "/health (GET)",
+            "stats": "/stats (GET)",
             "docs": "/docs"
         }
     }
@@ -308,7 +333,7 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
+    """Health check endpoint - public access."""
     return {
         "status": "healthy",
         "detector": "initialized" if detector is not None else "not initialized",
@@ -317,8 +342,23 @@ async def health_check():
     }
 
 
+@app.get("/auth-info")
+async def auth_info():
+    """Authentication information - public access."""
+    return {
+        "message": "This API requires Basic Authentication",
+        "authentication_type": "HTTP Basic Auth",
+        "protected_endpoints": ["/", "/detect", "/stats"],
+        "public_endpoints": ["/health", "/auth-info"],
+        "note": "Use your username and password in the Authorization header"
+    }
+
+
 @app.get("/stats")
-async def get_api_stats(days: int = Query(30, ge=1, le=365, description="Number of days to include")):
+async def get_api_stats(
+    days: int = Query(30, ge=1, le=365, description="Number of days to include"),
+    username: str = Depends(authenticate)
+):
     """
     Get API usage statistics.
     
@@ -344,7 +384,8 @@ async def detect_boxes_and_labels(
     file: UploadFile = File(..., description="Image file to process"),
     process_labels: bool = Query(True, description="Process labels for barcodes/QR/text"),
     include_annotated_image: bool = Query(True, description="Include annotated image with bounding boxes"),
-    ocr_confidence: float = Query(0.5, ge=0.0, le=1.0, description="OCR confidence threshold")
+    ocr_confidence: float = Query(0.5, ge=0.0, le=1.0, description="OCR confidence threshold"),
+    username: str = Depends(authenticate)
 ):
     """
     Detect boxes and labels in an image, extract barcode/QR/text from labels.
