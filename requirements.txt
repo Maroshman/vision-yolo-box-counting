@@ -12,3 +12,13 @@ requests>=2.31.0
 python-dotenv>=1.0.0
 pyyaml>=6.0.0
 seaborn>=0.12.0
+
+# OCR (optional for fallback text extraction)
+easyocr>=1.7.0
+
+# FastAPI Server
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+
+# Note: Barcode/QR detection uses OpenCV's built-in detectors (no extra deps)

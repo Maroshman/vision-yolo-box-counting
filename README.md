@@ -10,15 +10,16 @@ A comprehensive computer vision system for detecting and counting boxes using YO
 ## 🚀 Features
 
 - **🎯 YOLO v8 Integration**: State-of-the-art object detection with multiple model sizes
-- **🌐 Roboflow Dataset Management**: Seamless dataset creation, annotation, and management
-- **⚡ Real-time Detection**: Live box counting from images, video streams, and webcam
+- **🌐 Roboflow API Integration**: Cloud-hosted inference for boxes and labels
+- **📦 Box-Centric Detection**: Validates labels are inside boxes, flags orphans
+- **📊 Barcode/QR Reading**: Automatic extraction of codes from shipping labels
+- **📝 OCR Fallback**: Text extraction when barcodes not present
 - **🖥️ Web Interface**: Beautiful Streamlit-based user interface
 - **📊 Batch Processing**: Process hundreds of images efficiently
-- **📈 Analytics & Reports**: Comprehensive statistics and performance metrics
-- **🔄 Training Pipeline**: Complete model training and evaluation workflow
+- ** Training Pipeline**: Complete model training and evaluation workflow
 - **🐳 Docker Support**: Easy deployment with containerization
 - **💻 CLI Interface**: Command-line tools for automation
-- **📱 API Ready**: RESTful API endpoints for integration
+- **� REST API**: FastAPI endpoint for programmatic integration
 
 ## 📋 Requirements
 
@@ -104,7 +105,83 @@ Yolo-boxCounting/
 
 ## 🎮 Usage Guide
 
-### 🖥️ Web Interface
+### � REST API (Recommended for Production)
+
+Start the FastAPI server:
+
+```bash
+# Using uvicorn directly
+python api.py
+
+# Or with hot reload for development
+uvicorn api:app --reload --host 0.0.0.0 --port 8000
+```
+
+The API will be available at `http://localhost:8000` with automatic documentation at `http://localhost:8000/docs`.
+
+**Example API Request:**
+
+```bash
+# Detect boxes and process labels
+curl -X POST "http://localhost:8000/detect" \
+  -F "file=@image.jpg" \
+  -F "process_labels=true" \
+  -F "ocr_confidence=0.5"
+```
+
+**Example Response:**
+
+```json
+{
+  "boxes": [
+    {
+      "bbox": [100, 150, 400, 450],
+      "confidence": 0.95,
+      "label": "0.93",
+      "detected": {
+        "barcodes": ["98842510", "98842513"],
+        "qrcodes": [],
+        "text": "Handling Unit Number\n24105976"
+      }
+    },
+    {
+      "bbox": [450, 150, 750, 450],
+      "confidence": 0.91,
+      "label": "false",
+      "detected": null
+    }
+  ],
+  "orphan_labels": [],
+  "summary": {
+    "total_boxes": 4,
+    "boxes_with_labels": 3,
+    "orphan_labels": 0,
+    "barcodes_found": 6,
+    "qrcodes_found": 0,
+    "ocr_used": 2
+  }
+}
+```
+
+**Python Client Example:**
+
+```python
+import requests
+
+url = "http://localhost:8000/detect"
+files = {"file": open("image.jpg", "rb")}
+params = {"process_labels": True, "ocr_confidence": 0.5}
+
+response = requests.post(url, files=files, params=params)
+data = response.json()
+
+print(f"Found {data['summary']['total_boxes']} boxes")
+for box in data['boxes']:
+    if box['detected']:
+        print(f"Box has {len(box['detected']['barcodes'])} barcodes")
+```
+
+### �🖥️ Web Interface
 
 1. **Launch the app**: Run `streamlit run app.py` or `make run-app`
 2. **Upload images**: Use the file uploader in the "Single Image" tab
