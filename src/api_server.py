@@ -12,7 +12,7 @@ import base64
 import secrets
 import numpy as np
 from typing import List, Optional, Dict, Any
-from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Depends, status
+from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Form, Depends, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -315,6 +315,45 @@ def create_annotated_image(
     return img_base64
 
 
+def decode_base64_image(base64_string: str) -> np.ndarray:
+    """
+    Decode base64 string to OpenCV image.
+    
+    Args:
+        base64_string: Base64 encoded image (with or without data URL prefix)
+        
+    Returns:
+        RGB image as numpy array
+        
+    Raises:
+        ValueError: If the base64 string is invalid or cannot be decoded
+    """
+    try:
+        # Remove data URL prefix if present (e.g., "data:image/jpeg;base64,")
+        if ',' in base64_string:
+            base64_string = base64_string.split(',', 1)[1]
+        
+        # Decode base64 to bytes
+        image_data = base64.b64decode(base64_string)
+        
+        # Convert bytes to numpy array
+        nparr = np.frombuffer(image_data, np.uint8)
+        
+        # Decode image with OpenCV
+        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        if image is None:
+            raise ValueError("Failed to decode image from base64 data")
+        
+        # Convert BGR to RGB
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        
+        return image_rgb
+        
+    except Exception as e:
+        raise ValueError(f"Invalid base64 image data: {str(e)}")
+
+
 @app.get("/")
 async def root(username: str = Depends(authenticate)):
     """API root endpoint. Requires authentication."""
@@ -323,7 +362,7 @@ async def root(username: str = Depends(authenticate)):
         "version": "2.0.0",
         "authenticated_user": username,
         "endpoints": {
-            "detect": "/detect (POST)",
+            "detect": "/detect (POST) - Accepts file upload OR base64_image form field",
             "health": "/health (GET)",
             "stats": "/stats (GET)",
             "docs": "/docs"
@@ -381,14 +420,17 @@ async def get_api_stats(
 
 @app.post("/detect", response_model=DetectionResponse)
 async def detect_boxes_and_labels(
-    file: UploadFile = File(..., description="Image file to process"),
-    process_labels: bool = Query(True, description="Process labels for barcodes/QR/text"),
-    include_annotated_image: bool = Query(True, description="Include annotated image with bounding boxes"),
-    ocr_confidence: float = Query(0.5, ge=0.0, le=1.0, description="OCR confidence threshold"),
+    file: Optional[UploadFile] = File(None, description="Image file to process (alternative to base64_image)"),
+    base64_image: Optional[str] = Form(None, description="Base64 encoded image data (alternative to file)"),
+    process_labels: bool = Form(True, description="Process labels for barcodes/QR/text"),
+    include_annotated_image: bool = Form(True, description="Include annotated image with bounding boxes"),
+    ocr_confidence: float = Form(0.5, ge=0.0, le=1.0, description="OCR confidence threshold"),
     username: str = Depends(authenticate)
 ):
     """
     Detect boxes and labels in an image, extract barcode/QR/text from labels.
+    
+    Supports both file upload and base64 image input via form data. Provide either 'file' or 'base64_image', not both.
     
     Pipeline:
     1. Run YOLO detection to find boxes and labels
@@ -398,7 +440,8 @@ async def detect_boxes_and_labels(
     5. Optionally include annotated image with bounding boxes drawn
     
     Args:
-        file: Image file (JPEG, PNG, etc.)
+        file: Image file upload (JPEG, PNG, etc.) - mutually exclusive with base64_image
+        base64_image: Base64 encoded image data (form field) - mutually exclusive with file
         process_labels: Whether to process labels for data extraction
         include_annotated_image: Whether to include annotated image with bounding boxes
         ocr_confidence: Minimum confidence for OCR text
@@ -411,16 +454,40 @@ async def detect_boxes_and_labels(
     error_message = None
     
     try:
-        # Read and decode image
-        contents = await file.read()
-        nparr = np.frombuffer(contents, np.uint8)
-        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        # Validate input - must have either file or base64_image, but not both
+        if not file and not base64_image:
+            raise HTTPException(
+                status_code=400, 
+                detail="Either 'file' (multipart upload) or 'base64_image' (form field) must be provided"
+            )
         
-        if image is None:
-            raise HTTPException(status_code=400, detail="Invalid image file")
+        if file and base64_image:
+            raise HTTPException(
+                status_code=400, 
+                detail="Provide either 'file' or 'base64_image', not both"
+            )
         
-        # Convert BGR to RGB
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        # Process image based on input type
+        if file:
+            # Handle file upload
+            logger.info("Processing uploaded file...")
+            contents = await file.read()
+            nparr = np.frombuffer(contents, np.uint8)
+            image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+            if image is None:
+                raise HTTPException(status_code=400, detail="Invalid image file")
+            
+            # Convert BGR to RGB
+            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            
+        else:
+            # Handle base64 input
+            logger.info("Processing base64 image...")
+            try:
+                image_rgb = decode_base64_image(base64_image)
+            except ValueError as ve:
+                raise HTTPException(status_code=400, detail=f"Invalid base64 image: {str(ve)}")
         
         # Run YOLO detection
         logger.info("Running YOLO detection...")
@@ -592,8 +659,15 @@ async def detect_boxes_and_labels(
         processing_time_ms = (time.time() - start_time) * 1000
         if api_logger:
             try:
+                # Prepare image data for logging based on input type
+                if file:
+                    log_image_data = contents
+                else:
+                    # For base64, log only first 1000 chars to avoid huge logs
+                    log_image_data = base64_image[:1000].encode('utf-8')
+                
                 api_logger.log_api_call(
-                    image_data=contents,
+                    image_data=log_image_data,
                     response=response_dict,
                     processing_time_ms=processing_time_ms,
                     error=error_message
@@ -616,10 +690,17 @@ async def detect_boxes_and_labels(
         
         # Log failed call
         processing_time_ms = (time.time() - start_time) * 1000
-        if api_logger and 'contents' in locals():
+        if api_logger:
             try:
+                # Prepare image data for logging based on available input
+                log_image_data = b''
+                if 'contents' in locals():
+                    log_image_data = contents
+                elif base64_image:
+                    log_image_data = base64_image[:1000].encode('utf-8')
+                
                 api_logger.log_api_call(
-                    image_data=contents,
+                    image_data=log_image_data,
                     response={},
                     processing_time_ms=processing_time_ms,
                     error=error_message
